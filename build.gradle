@@ -1,0 +1,1333 @@
+import com.appdynamics.plugins.ui.module.UiModulePlugin
+import com.appdynamics.plugins.ui.module.tasks.CompileUiTypeScript
+import com.appdynamics.tasks.ConcatenateFiles
+import com.moowork.gradle.node.task.NodeTask
+import org.apache.tools.ant.filters.ReplaceTokens
+
+evaluationDependsOn(':controller')
+def controllerVersions = project(':controller').versions
+
+group = "com.appdynamics.ux.ui.view-main"
+
+apply plugin: 'base'
+apply plugin: 'com.moowork.node'
+apply plugin: 'appdynamics-version'
+apply plugin: 'com.github.jruby-gradle.base'
+apply plugin: 'ui-module'
+apply plugin: 'com.appdynamics.gradle.plugins.nexus-repo-plugin'
+apply plugin: 'org.sonarqube'
+
+// Each configuration defines a set of dependencies and/or artifacts
+configurations {
+    release
+    releaseFlexDependencies { // Separating artifact and dependencies to prevent transitivity
+        visible = false
+    }
+    webAdrumDependencies {
+        visible = false
+    }
+    debug
+    debugFlexDependencies { // Separating artifact and dependencies to prevent transitivity
+        visible = false
+    }
+    typescriptResourceManager {
+        visible = false
+    }
+    validator {
+        visible = false
+    }
+    generatedTypeScript {
+        visible = false
+        transitive = false
+    }
+    systemJsBuilderModules { visible = false }
+    flexSdk
+    nexusJsLibs
+    nexusAssets
+    generatedTypeScriptNew
+    adqlGrammar
+    e2eZip
+}
+
+uiModule {
+    typeScriptVersion = '2.5.3'
+    testTsConfig = 'src/web/test/unit/tsconfig.gradle.json'
+}
+
+// Passing -Pflex=false will skip the flex build when in dev mode.
+// This shaves about 3 minutes off a clean build and is still usable for many teams.
+def enableFlex = project.hasProperty('flex') ? flex.toBoolean() : true
+
+// Each dependency is added to a particular configuration
+dependencies {
+    jrubyExec 'rubygems:sass:3.4.14'
+    typescriptResourceManager 'net.nczonline.web:props2js:1.0.1'
+    releaseFlexDependencies project(path: ':ux:ui:shared', configuration: 'releaseFlex')
+    debugFlexDependencies project(path: ':ux:ui:shared', configuration: 'debugFlex')
+    webAdrumDependencies group: 'com.appdynamics.eum-jsagent', name: 'adrum-template', version: teamcityVersions.jsagentVersion, ext: 'zip'
+    webAdrumDependencies group: 'com.appdynamics.eum-jsagent', name: 'adrum-ext', version: teamcityVersions.jsagentVersion, ext: 'zip'
+    webAdrumDependencies group: 'com.appdynamics.eum-jsagent', name: 'adrum-xd', version: teamcityVersions.jsagentVersion, ext: 'zip'
+    validator project(path: ':ux:ui:shared', configuration: 'validatorRuntime')
+    generatedTypeScript project(path: ':aip:modules:apm:configuration:api', configuration: 'protoTypeScript')
+    generatedTypeScript project(path: ':ux:ui:shared', configuration: 'typeScript')
+    systemJsBuilderModules group: 'com.appdynamics.gradle.node-modules', name: 'systemjs-builder-modules', version: '0.16.12'
+    flexSdk 'com.adobe:flex-sdk:3.6'
+    nexusJsLibs 'com.amcharts:ammap:3.20.6.appd'
+    nexusAssets 'com.appdynamics.gradle.json-data:geo-maps:0.1.7'
+    generatedTypeScriptNew project(path: ':controller:controller-ui:platform:api', configuration: 'uiCodeGen')
+    generatedTypeScriptNew project(path: ':controller:controller-ui:apm:api', configuration: 'uiCodeGen')
+    generatedTypeScriptNew project(path: ':controller:controller-ui:dbmon:api', configuration: 'uiCodeGen')
+    generatedTypeScriptNew project(path: ':controller:controller-ui:platform:api', configuration: 'uiCodeGen')
+    generatedTypeScriptNew project(path: ':controller:controller-ui:alertrespond:api', configuration: 'uiCodeGen')
+    generatedTypeScriptNew project(path: ':aip:platform:services:dashboard:api', configuration: 'uiCodeGen')
+    generatedTypeScriptNew project(path: ':controller:controller-ui:eum:api', configuration: 'uiCodeGen')
+    generatedTypeScriptNew project(path: ':aip:modules:apm:configuration:api-ui', configuration: 'uiCodeGen')
+    generatedTypeScriptNew project(path: ':aip:platform:services:license:api', configuration: 'uiCodeGen')
+    generatedTypeScriptNew project(path: ':aip:platform:libraries:metering:api', configuration: 'uiCodeGen')
+    generatedTypeScriptNew project(path: ':aip:modules:infra:core:api', configuration: 'uiCodeGen')
+    generatedTypeScriptNew project(path: ':aip:modules:apm:api', configuration: 'uiCodeGen')
+    generatedTypeScriptNew project(path: ':controller:controller-api', configuration: 'uiCodeGen')
+    generatedTypeScriptNew project(path: ':npm:netviz:api', configuration: 'uiCodeGen')
+    generatedTypeScriptNew project(path: ':npm:netviz:api:appagent', configuration: 'uiCodeGen')
+    adqlGrammar group: 'com.appdynamics.analytics', name: 'analytics-framework-adql', version: controllerVersions.analyticsVersion
+
+    compile npm("@appd/ui-kit@0.0.2")
+    compile npm("d3-flame-graphs@3.1.0")
+    compile npm("d3-tip@0.6.7")
+    compile npm("moment@2.20.1")
+    compile npm("@types/moment-timezone@0.5.4")
+    compile npm("moment-timezone@0.5.14")
+    compile project(path: ':ux:ui:platform:core')
+    compile project(path: ':ux:ui:platform:components')
+    compile project(path: ':ux:ui:platform:dashboard:dashboard-app')
+    compile project(path: ':ux:ui:platform:dashboard:dashboard-core')
+    compile project(path: ':ux:ui:platform:dashboard:smart-widgets')
+    compile project(path: ':ux:ui:platform:utils')
+    compile project(path: ':ux:ui:account-admin')
+
+    testCompile npm("@types/angular-mocks@1.5.11")
+    testCompile npm("angular-mocks@1.5.11")
+    testCompile npm("express@~4.14.0")
+    testCompile npm("ip@1.1.0")
+    testCompile npm("puppeteer@1.1.1")
+    testCompile npm("istanbul-combine@0.3.0")
+    testCompile npm("istanbul@0.4.5")
+    testCompile npm("jasmine-spec-reporter@4.1.0")
+    testCompile npm("jasmine-reporters@2.2.1")
+    testCompile npm("karma@1.6.0")
+    testCompile npm("karma-chrome-launcher@2.2.0")
+    testCompile npm("karma-htmlfile-reporter@~0.3")
+    testCompile npm("karma-spec-reporter@0.0.32")
+    testCompile npm("karma-coverage@1.1.1")
+    testCompile npm("karma-jasmine@1.1.0")
+    testCompile npm("karma-ng-html2js-preprocessor@1.0.0")
+    testCompile npm("karma-phantomjs-launcher@1.0.4")
+    testCompile npm("karma-teamcity-reporter@1.1.0")
+    testCompile npm("protractor@5.3.0")
+    testCompile npm("@types/jasminewd2@2.0.3")
+    testCompile npm("q@~1.4.1")
+    testCompile npm("remap-istanbul@0.10.1")
+    testCompile npm("sauce-connect-launcher@0.17.0")
+    testCompile npm("underscore@~1.8.3")
+    testCompile npm("protractor-html-reporter@1.3.2")
+    testCompile npm("fs-extra@3.0.1")
+    testCompile npm("@types/jasmine@2.8.6")
+    testCompile npm("jasmine-core@2.4.1")
+    testCompile npm("lodash@4.17.4")
+}
+// Configures the node plugin
+node {
+    download = true
+    workDir = file("${buildDir}/node")
+    version = "8.9.4"
+    yarnVersion = "1.3.2"
+    distBaseUrl = 'http://nodejs-proxy.corp.appdynamics.com/'
+    yarnWorkDir = file("${project.buildDir}/yarn")
+    nodeModulesDir = projectDir
+}
+
+// Configure jruby plugin to use local repos
+jruby {
+    defaultRepositories = false
+}
+
+ext.timestamp = new Date().format('yyyyMMdd-HHmmss', TimeZone.getTimeZone('PST'))
+ext.swfName = "Main_${timestamp}.swf".toString()
+ext.libDir = 'src/web/lib'
+ext.deployDir = "$rootDir/../controller-tmp/glassfish/glassfish/domains/domain1/applications/controller/controller" +
+        '-web_war'
+ext.isJenkinsBuild = System.env.BUILD_CAUSE == 'SCMTRIGGER'
+// TODO: Locale is set in gradle.properties, but this means our builds are locale specific
+
+task unpackGeneratedTypeScript(type: Copy, dependsOn: configurations.generatedTypeScriptNew) {
+    from { configurations.generatedTypeScriptNew.collect { zipTree(it) } }
+    into 'src/web/generated'
+
+    doFirst {
+        delete 'src/web/generated'
+    }
+}
+
+task unzipFlexSdk(type: Copy) {
+    description = 'Downloads the Flex SDK and unzips it into build/flexSdk'
+
+    inputs.files(configurations.flexSdk)
+    from {
+        configurations.flexSdk.collect {
+            zipTree(it)
+        }
+    }
+    into "${buildDir}/flexSdk"
+}
+
+task copyFlexAssets(type: Copy, dependsOn: 'downloadNexusAssets') {
+    from('../assets/src') {
+        include 'fonts/**'
+        include 'images/**'
+        include 'swf/**'
+    }
+
+    from("${buildDir}/downloads/assets/src") {
+        include 'fonts/**'
+        include 'images/**'
+        include 'swf/**'
+    }
+
+    into 'src/flex'
+}
+
+task copyConfig(type: Copy) {
+    description = 'Copies config files for use at runtime'
+    def buildName = System.getenv('BUILD_NUMBER')?.split('-')?.getAt(0) ?: 'DEVBUILD'
+
+    inputs.property 'appDynamicsVersion', appDynamicsVersion
+    inputs.property 'appDynamicsControllerSchemaVersion', appDynamicsControllerSchemaVersion
+    inputs.property 'buildName', buildName
+
+
+    from('config') {
+        include 'config.properties'
+    }
+
+    from('config') {
+        include 'version.properties'
+        // TODO: Remove version.properties, these values should not be injected at build time
+        eachFile {
+            it.filter {
+                String line ->
+                    return line
+                            .replaceAll('@version@', "${appDynamicsVersion}")
+                            .replaceAll('@controllerSchemaVersion@', "${appDynamicsControllerSchemaVersion}")
+                            .replaceAll('@buildNumber@', "${buildName}")
+            }
+        }
+    }
+
+    into "$buildDir/config"
+}
+
+task compileResourceManager(dependsOn: 'copyConfig') {
+    description = 'Translates *.properties files into ResourceManager.ts'
+
+    def propertyFiles = fileTree(dir: "config/locale/$locale",
+                                 include: '**/*.properties',
+                                 exclude: 'autogeneratedui.properties')
+
+    propertyFiles += fileTree(dir: "$buildDir/config",
+                              include: '**/*.properties')
+    def propertyOutputStream = new ByteArrayOutputStream()
+
+    inputs.files(propertyFiles)
+            .withPropertyName("inputPropertyFiles")
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file('config/web/ResourceManager.template.ts')
+            .withPropertyName("resourceManagerTemplate")
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+
+    outputs.file('src/web/shared/services/ResourceManager.ts')
+            .withPropertyName("resourceManager")
+    outputs.cacheIf { true }
+
+    doFirst {
+        propertyFiles.each { File propertyFile ->
+            // For each file, give it a new, indented line
+            propertyOutputStream.write((System.lineSeparator() + '    ').bytes)
+            // Each variable should be private and named after its property file
+            propertyOutputStream.write("private ${propertyFile.name.replaceAll(/\.properties$/, '')} = ".bytes)
+            javaexec {
+                classpath configurations.typescriptResourceManager
+                main 'net.nczonline.web.props2js.Props2Js'
+                // variable name is the property file stripped of extension
+                args([propertyFile.absolutePath, '-t', 'json'])
+                standardOutput propertyOutputStream
+            }
+            propertyOutputStream.write(";${System.lineSeparator()}".bytes)
+        }
+    }
+
+    doLast {
+        copy {
+            from('config/web/ResourceManager.template.ts')
+            into('src/web/shared/services')
+            filter(ReplaceTokens, tokens: [GENERATED_PROPERTIES: propertyOutputStream.toString()])
+            rename('ResourceManager.template.ts', 'ResourceManager.ts')
+        }
+    }
+}
+
+task compileSass(dependsOn: 'jrubyPrepare') {
+    description = 'Compile *.scss files to *.css'
+
+    def inputOutputPairs = new LinkedList<String>();
+    def cssBuildDir = file("$buildDir/web/css")
+    inputs.files(fileTree(dir: 'src/web', include: '**/*.scss'))
+            .withPropertyName("inputScss")
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.dir(cssBuildDir)
+            .withPropertyName("outputCss")
+    outputs.cacheIf { true }
+    logging.captureStandardOutput LogLevel.INFO
+
+    doFirst {
+        def filesToCompile = fileTree(dir: 'src/web/css', includes: ['admin.scss',
+                                                                     'libs.scss',
+                                                                     'reports.scss',
+                                                                     'shared.scss',
+                                                                     'ui.scss',
+                                                                     'ui-pages.scss',
+                                                                     'apm.scss',
+                                                                     'analytics.scss',
+                                                                     'customDashboard.scss',
+                                                                     'dbmon.scss',
+                                                                     'eum.scss',
+                                                                     'sim.scss',
+                                                                     'npm.scss',
+                                                                     'platform.scss'])
+        filesToCompile.each { File file ->
+            inputOutputPairs.add("${file.absolutePath}:$buildDir/web/css/${file.name.replaceAll(/\.scss$/, '.css')}"
+                                         .toString())
+        }
+    }
+
+    doLast {
+        mkdir(cssBuildDir) // *nix will do this for us, but Windows needs a little help
+        jrubyexec {
+            script 'sass'
+            scriptArgs '--unix-newlines'
+            scriptArgs '--style'
+            scriptArgs 'compact'
+            // For whatever reason scriptArgs won't accept a list
+            inputOutputPairs.each { String scssPair ->
+                scriptArgs scssPair
+            }
+        }
+    }
+}
+
+task copyGeneratedTypeScript(dependsOn: 'unpackGeneratedTypeScript') {
+    description = "Unpacks legacy generated TS files"
+    inputs.files configurations.generatedTypeScript
+    outputs.files fileTree(dir: 'src/web/lib/controller', include: '**/*.ts')
+    doFirst {
+        delete outputs.files
+    }
+    doLast {
+        // We unzip the dependencies and flatten them, then copy them - separating any file ending in '*Service' into
+        // a child directory
+        copy {
+
+            // copy DTOs into web/lib/controller
+            from {
+                configurations.generatedTypeScript.collect { zipTree(it).files }
+            }
+            into 'src/web/lib/controller'
+            exclude '**/*Service.ts', '**/*Resource.ts'
+        }
+
+        copy {
+
+            // copy services into web/lib/controller/services (note: we don't flatten these)
+            from {
+                configurations.generatedTypeScript.collect { zipTree(it) }
+            }
+
+            eachFile {
+                // we want the ZIP/controller-web/service/*UiService files to go in web/lib/controller/services
+                it.setPath(it.getPath().replaceFirst('^controller-web/service', ''))
+                // we want the ZIP/sim/service/*Service files to go in web/lib/controller/sim
+                it.setPath(it.getPath().replaceFirst('^sim/service/sim', 'sim'))
+                // we want the ZIP/npm/service/*Service files to go in web/lib/controller/npm
+                it.setPath(it.getPath().replaceFirst('^npm/service/npm', 'npm'))
+
+                it.setPath(it.getPath().replaceFirst('^netviz/service/netviz', 'netviz'))
+            }
+            into 'src/web/lib/controller/services'
+            includeEmptyDirs = false
+            include '**/*Service.ts', '**/*Resource.ts'
+        }
+    }
+}
+
+task copyCssResources(type: Copy) {
+    from fileTree(dir: libDir, includes: ['**/*.ttf',
+                                          '**/*.woff',
+                                          '**/*.eot']).files
+    into "${buildDir}/web/css"
+}
+
+task downloadSystemJsBuilder(type: Copy) {
+    inputs.files configurations.systemJsBuilderModules
+    from { configurations.systemJsBuilderModules.files.collect() { zipTree it } }
+    into "$buildDir/downloads/systemJsBuilder"
+    includeEmptyDirs false
+    eachFile { fileName ->
+        fileName.path = fileName.path.replaceAll('systemjs-builder-modules[^/]*', 'node_modules')
+    }
+}
+
+task downloadNexusJsLibs(type: Copy) {
+    description = 'Downloads libraries that we keep on nexus, because they cannot be managed through npm'
+
+    inputs.files configurations.nexusJsLibs
+    from { configurations.nexusJsLibs.files.collect() { zipTree it } }
+    into "${buildDir}/downloads/lib"
+}
+
+task downloadNexusAssets(type: Copy) {
+    inputs.files configurations.nexusAssets
+    from { configurations.nexusAssets.files.collect() { zipTree it } }
+    into "$buildDir/downloads/assets/src"
+}
+
+task concatLibs(dependsOn: ['concatIeJsLibs',
+                            'concatJsLibsHead',
+                            'concatCssLibHead',
+                            'concatJsLibsBody']) {
+
+    description = 'Concatenates static CSS and JS libraries.'
+}
+
+task concatIeJsLibs(type: ConcatenateFiles) {
+    description = 'Concatenates static JS libraries needed for IE compatability'
+    files = files("$libDir/angular/angular-ui-ieshiv.min.js",
+                  "$libDir/html5shiv/html5shiv.js")
+
+    target = file("$buildDir/web/js-ie-lib-head-concat.js")
+}
+
+task concatJsLibsHead(type: ConcatenateFiles) {
+    description = 'Concatenates static JS libraries to be loaded in HTML head'
+    files = files("$libDir/polyfills/polyfills.js",
+                  "${node.nodeModulesDir}/node_modules/core-js/client/shim.js",
+                  "${node.nodeModulesDir}/node_modules/zone.js/dist/zone.js",
+                  "$libDir/jquery/jquery.min.js",
+                  "$libDir/swfobject/swfobject.min.js",
+                  "$libDir/cryptojs/rollups/md5.js",
+                  "$libDir/notify/jquery-ui.custom.min.js",
+                  "$libDir/notify/jquery.notify.js",
+                  "$libDir/jqueryTouchPunch/jquery.ui.touch-punch.min.js")
+
+    target = file("$buildDir/web/js-lib-head-concat.js")
+}
+
+
+task concatCssLibHead(type: ConcatenateFiles, dependsOn: [compileSass, copyCssResources, UiModulePlugin.NPM_INSTALL_PRODUCTION_DEPENDENCIES_TASK_NAME]) {
+    description = 'Concatenates static CSS libraries to be loaded in HTML head'
+    files = files("$libDir/notify/ui.notify.css",
+                  "$libDir/angular-ui/ui-select/select.min.css",
+                  "$libDir/angular-ui/ui-select/select2.min.css",
+                  "$libDir/angular-ui/ui-grid/ui-grid.min.css",
+                  "$libDir/angular-gridster/angular-gridster.min.css",
+                  "$libDir/gridstack/gridstack.css",
+                  "$libDir/textAngular/textAngular.css",
+                  "$libDir/selectize/selectize.default.css",
+                  "$libDir/angular-gridster/angular-gridster.min.css",
+                  "$libDir/json-formatter/json-formatter.min.css",
+                  "$libDir/ng-prettyjson/ng-prettyjson.min.css",
+                  "$libDir/queryplan/qp.css",
+                  "${node.nodeModulesDir}/node_modules/d3-flame-graphs/dist/d3-flame-graph.css",
+                  "$buildDir/web/css/libs.css")
+
+    target = file("$buildDir/web/css/css-lib-head-concat.css")
+}
+
+task concatJsLibsBody(type: ConcatenateFiles, dependsOn: [UiModulePlugin.NPM_INSTALL_PRODUCTION_DEPENDENCIES_TASK_NAME]) {
+    description = 'Concatenates static JS libraries to be loaded in HTML body'
+
+    // ExtJS
+    files = files("$libDir/ext/ext-all.js")
+
+    // Angular
+    files += files("${node.nodeModulesDir}/node_modules/angular/angular.min.js",
+                   "${node.nodeModulesDir}/node_modules/angular-touch/angular-touch.min.js",
+                   "${node.nodeModulesDir}/node_modules/angular-cookies/angular-cookies.min.js",
+                   "${node.nodeModulesDir}/node_modules/angular-animate/angular-animate.min.js",
+                   "${node.nodeModulesDir}/node_modules/angular-ui-bootstrap/ui-bootstrap-tpls.min.js",
+                   "$libDir/textAngular/textAngular-sanitize.min.js",
+                   "$libDir/angular-vs-repeat/angular-vs-repeat.js",
+                   "$libDir/angular-ng-upload/ng-upload.min.js",
+                   "$libDir/angular-ng-file-upload/ng-file-upload.min.js",
+                   "$libDir/angular-ng-file-upload/ng-file-upload-shim.min.js",
+                   "$libDir/angular-ui/ui-select/select.min.js",
+                   "$libDir/angular-ui/ui-grid/ui-grid.min.js",
+                   "$libDir/angular-qrcodejs/qrcode.min.js",
+                   "$libDir/angular-strap-popover/popover.min.js",
+                   "$libDir/angular-ui/bootstrap/ui-bootstrap-0.3-dialog.js",
+                   "$libDir/angular-dragdrop/angular-dragdrop.min.js",
+                   "$libDir/angular-gridster/angular-gridster.min.js")
+    // Other
+    files += files("$libDir/base64/base64.js",
+                   "$libDir/elasticsearch/elasticsearch.min.js",
+                   "$libDir/elasticjs/elastic.min.js",
+                   "$libDir/ocLazyLoad/ocLazyLoad.min.js",
+                   "$libDir/json-formatter/json-formatter.min.js",
+                   "$libDir/ng-prettyjson/ng-prettyjson.min.js",
+                   "$libDir/oboe/oboe-browser.js",
+                   "$libDir/queryplan/qp.min.js")
+    // HighCharts
+    files += files("$libDir/angular-highcharts/highcharts-ng.js",
+                   "$libDir/highcharts/highcharts.js",
+                   "$libDir/highcharts/highcharts-more.js",
+                   "$libDir/highcharts/modules/solid-gauge.js",
+                   "$libDir/highcharts/modules/drilldown.js",
+                   "$libDir/highcharts/modules/treemap.js",
+                   "$libDir/highcharts/modules/no-data-to-display.js",
+                   "$libDir/highcharts/modules/funnel.js",
+                   "$libDir/highcharts/modules/heatmap.js")
+
+    target = file("$buildDir/web/js-lib-body-concat.js")
+}
+
+task tslint(type: NodeTask, dependsOn: UiModulePlugin.DOWNLOAD_TSC_TASK_NAME) {
+    description = 'Runs linter against all typescript files'
+
+    script = file("${buildDir}/downloads/typescript/node_modules/tslint/bin/tslint")
+    args = ['-c', 'tslint.gradle.json', '--project', 'tsconfig.gradle.json', '--exclude', 'src/web/lib/controller/**']
+    execOverrides = {
+        it.args = ['--max-old-space-size=4096'] + it.args
+    }
+}
+
+task tslintTest(type: NodeTask, dependsOn: UiModulePlugin.DOWNLOAD_TSC_TASK_NAME) {
+    description = 'Runs linter against all typescript test files'
+
+    script = file("${buildDir}/downloads/typescript/node_modules/tslint/bin/tslint")
+    args = ['-c', 'tslint.gradle.json', '--project', 'src/web/test/unit/tsconfig.gradle.json', '--exclude', 'src/web/lib/controller/**']
+    execOverrides = {
+        it.args = ['--max-old-space-size=4096'] + it.args
+    }
+}
+
+task compileSandbox(type: CompileUiTypeScript, dependsOn: ['copyGeneratedTypeScript',
+                                                           'compileResourceManager']) {
+    description = 'Transpiles Sandbox Typescript code to Javascript'
+    inputs.file "tsconfig.gradle.json"
+
+    tsConfig = file("src/web/sandbox/tsconfig.gradle.json")
+    tsSource = fileTree(dir: 'src/web', includes: ['sandbox/**/*.ts'])
+    outDir = file("${buildDir}/dist-sandbox")
+}
+
+task packageSandboxHTML(type: Copy, dependsOn: compileSandbox) {
+    from('src/web/sandbox') {
+        include '**/*.html'
+    }
+    includeEmptyDirs = false
+    into "${buildDir}/dist-sandbox/sandbox"
+}
+
+task packageSandbox(type: Copy, dependsOn: compileSandbox) {
+    from('src/web') {
+        include '**/sandbox.jsp'
+        include '**.html'
+    }
+
+    // compile output got sent straight to dist since we don't have to postprocess
+
+    includeEmptyDirs = false
+    into "${buildDir}/dist-sandbox"
+}
+
+task deploySandbox(type: Copy, dependsOn: ['deploy', packageSandbox, packageSandboxHTML]) {
+    from "${buildDir}/dist-sandbox"
+    into deployDir
+}
+
+def unitTestOutputDir = "${buildDir}/unit-test"
+def compileTestOutputDir = "${buildDir}/compile-unit"
+
+task compileUnit(type: CompileUiTypeScript, dependsOn: ['copyGeneratedTypeScript',
+                                                        'compileResourceManager',
+                                                        UiModulePlugin.NPM_INSTALL_TEST_DEPENDENCIES_TASK_NAME]) {
+    description = 'Transpiles TypeScript unit test code to JavaScript'
+    inputs.file 'tsconfig.gradle.json'
+
+    tsConfig = file('src/web/test/unit/tsconfig.gradle.json')
+    tsSource = fileTree(dir: 'src/web', exclude: 'test/endToEnd', include: '**/*.ts')
+    outDir = file(compileTestOutputDir)
+    nodeArgs = ['--max-old-space-size=2048']
+}
+
+task copyUnitRuntime(type: Copy, dependsOn: [downloadNexusJsLibs]) {
+    description = "Copies the javascript tests that don't need to be transpiled"
+
+    mustRunAfter UiModulePlugin.NPM_INSTALL_TEST_DEPENDENCIES_TASK_NAME
+
+    from(projectDir) {
+        include 'config/test/unit/**'
+    }
+
+    from('src/web') {
+        include 'test/KarmaTestRunner.js'
+        include '**/*.html'
+        include 'lib/**'
+        include 'system.config.js'
+        exclude 'lib/controller/**'
+    }
+
+    from("${buildDir}/downloads") {
+        include 'lib/**'
+    }
+
+    from(node.nodeModulesDir) {
+        include 'node_modules/**'
+        exclude 'node_modules/@types'
+    }
+
+    into unitTestOutputDir
+}
+
+task copyCompiledCodeToTest(type: Copy, dependsOn: ['compileUnit']) {
+    from compileTestOutputDir
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    includeEmptyDirs = true
+    into unitTestOutputDir
+}
+
+task copyAppToTest(type: Copy, dependsOn: ['bundleAll']) {
+    // This is necessary due to the dynamic references (i.e MainAppModuleCode).
+    // Once those are removed, this can be deleted and just compileUnit should work.
+    mustRunAfter compileUnit
+    from "build-debug/web"
+    include "**/*.js"
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    includeEmptyDirs = false
+    into unitTestOutputDir
+}
+
+task testUnit {
+    description = 'Aggregator task for all karma unit batch runs'
+}
+
+def numberOfKarmaBatches = project.findProperty('karma.batches')?.toInteger() ?: 1
+
+(1..numberOfKarmaBatches).each { currentBatch ->
+    def batchedTaskName = "testUnit_batch_${currentBatch}"
+    task(batchedTaskName, type: NodeTask, dependsOn: [UiModulePlugin.NPM_INSTALL_TEST_DEPENDENCIES_TASK_NAME,
+                                                      copyCompiledCodeToTest,
+                                                      copyAppToTest,
+                                                      copyUnitRuntime]) {
+        script = file("${node.nodeModulesDir}/node_modules/.bin/karma")
+        def batchArguments = ["--batch=${currentBatch}", "--total=${numberOfKarmaBatches}"]
+        def withCoverage = project.findProperty('with.coverage')?.toBoolean() ?: false;
+        inputs.property 'withCoverage', withCoverage
+        if (withCoverage) {
+            args = ['start', "${unitTestOutputDir}/config/test/unit/karma.coverage.conf.js"] + batchArguments
+        } else {
+            if (isJenkinsBuild) {
+                args = ['start', "${unitTestOutputDir}/config/test/unit/karma.build.conf.js"] + batchArguments
+            } else {
+                args = ['start', "${unitTestOutputDir}/config/test/unit/karma.conf.js"] + batchArguments
+            }
+        }
+    }
+
+    testUnit.dependsOn batchedTaskName
+}
+
+// Debug are never batched
+task testUnitDebug(type: NodeTask, dependsOn: [UiModulePlugin.NPM_INSTALL_TEST_DEPENDENCIES_TASK_NAME,
+                                               copyCompiledCodeToTest,
+                                               copyAppToTest,
+                                               copyUnitRuntime]) {
+    description = 'Runs Karma unit tests locally in debug mode'
+    script = file("${node.nodeModulesDir}/node_modules/.bin/karma")
+    args = ['start',
+            "${unitTestOutputDir}/config/test/unit/karma.conf.debug.gradle.js"]
+}
+
+task mergeBatchCoverageReports(type : NodeTask, dependsOn: [testUnit]) {
+    // istanbul-combine is a tool that takes multiple istanbul coverage reports and
+    // merge into one. Since we run UI unit tests in batches, this tool will be used
+    // to merge the coverage reports to one.
+
+    description = "Runs istanbul-combine on the istanbul coverage files"
+
+    script = file("${node.nodeModulesDir}/node_modules/.bin/istanbul-combine")
+    args = ["-r",
+            "json",
+            "-d",
+            "${buildDir}/reports/coverage/json/",
+            "-p",
+            "summary"]
+
+    (1..numberOfKarmaBatches).each { currentBatch ->
+        args.push("${buildDir}/reports/coverage/json/coverage-batch-" + currentBatch + ".json");
+    }
+}
+
+task generateTypescriptCoverageReport(type: NodeTask, dependsOn: [mergeBatchCoverageReports]) {
+    // remap-istanbul is a tool that takes an istanbul coverage (LCOV) file
+    // for javascript that was transpiled in a different language (in this case
+    // typescript). It outputs a new LCOV file that gives coverage on the original
+    // source files. Since we don't write native Javascript, this is way more useful
+    // to us.
+    description = "Runs remap-istanbul on the istanbul coverage file."
+
+    def inputFile = "${buildDir}/reports/coverage/json/coverage-final.json"
+    def outputFile = "${buildDir}/typescript-coverage.lcov"
+    inputs.files inputFile
+    outputs.files outputFile
+
+    script = file("${node.nodeModulesDir}/node_modules/.bin/remap-istanbul")
+    args = ['-i',
+            "${buildDir}/reports/coverage/json/coverage-final.json",
+            "--output",
+            "${buildDir}/typescript-coverage.lcov",
+            "--type",
+            "lcovonly"]
+}
+
+task generateRelativePathTypescriptCoverageReport(dependsOn: [generateTypescriptCoverageReport]) {
+    description = "Adjusts source map paths of the remap-istanbul coverage file so they can be interpreted correctly by Sonar."
+
+    def inputFile = "${buildDir}/typescript-coverage.lcov"
+    def outputFile = "${buildDir}/typescript-coverage-for-sonar.lcov"
+    inputs.files inputFile
+    outputs.files outputFile
+
+    doLast {
+        // remap-istanbul emits paths relative to view-main..
+        // and sonar expects the paths to be relative to the properties file, which is in codebase/ux/ui...
+        // so this just takes the file remap-istanbul gave us and replaces "src" with "view-main/src"
+        // there are some config options to change the remap base dir., but they are not well documented and
+        // this is simpler.
+        String contents = new File("${buildDir}/typescript-coverage.lcov").getText("UTF-8")
+        contents = contents.replaceAll('../../../../../../../../controller', 'src/web');
+        File f = file("${buildDir}/typescript-coverage-for-sonar.lcov")
+        f.write(contents, "UTF-8");
+    }
+}
+
+task checkCoverage(type: YarnTask, dependsOn: generateRelativePathTypescriptCoverageReport) {
+    args = ["run", "istanbul", "check-coverage"]
+}
+
+project.ext.endToEndTestOutputDir = "${buildDir}/e2e-test"
+
+task compileEndToEnd(type: CompileUiTypeScript, dependsOn: UiModulePlugin.NPM_INSTALL_TEST_DEPENDENCIES_TASK_NAME) {
+    description = 'Transpiles TypeScript E2E test code to JavaScript'
+    inputs.file 'tsconfig.gradle.json'
+    tsSource = fileTree(dir: 'src/web/test', include: ['endToEnd/**/*.ts', 'jasmine/**/*.ts'])
+    tsConfig = file('src/web/test/endToEnd/tsconfig.gradle.json')
+    outDir = file(endToEndTestOutputDir)
+}
+
+task updateProtractorDependencies(type: NodeTask, dependsOn: UiModulePlugin.NPM_INSTALL_TEST_DEPENDENCIES_TASK_NAME) {
+    description = 'Updates drivers used by Protractor'
+    // TODO - Make dependency internal by mirroring google repos and setting alternate_cdn flag
+    script = file("$node.nodeModulesDir/node_modules/protractor/bin/webdriver-manager")
+
+    // Version must match chromedriver path in BaseTestConf.js
+    args = ['update', '--versions.chrome', '2.36']
+}
+
+task copyChromeWebDriver(type: Copy, dependsOn: ["updateProtractorDependencies"]) {
+    description = 'Copies Chrome webdriver to the build e2e folder'
+    from "${node.nodeModulesDir}/node_modules/webdriver-manager/selenium/"
+    into "${endToEndTestOutputDir}/endToEnd/drivers"
+}
+
+task copyEndToEndConfigs(type: Copy) {
+    from('src/web/test/endToEnd') {
+        include 'config/**.js'
+        include '**/*.json'
+    }
+    from 'config/test/sauce.json'
+    into "${endToEndTestOutputDir}/endToEnd"
+}
+
+task copyStaticContentForTesting(type: Copy, dependsOn: ["package"]) {
+    from 'build-debug/dist'
+    from 'src/web/test/endToEnd/html'
+    into "${endToEndTestOutputDir}/endToEnd/static"
+}
+
+task testEndToEnd(type: ProtractorTask) {
+    description = 'Runs End to End Tests against running controller'
+}
+
+task playbackEndToEnd(type: ProtractorTask, dependsOn: ["copyStaticContentForTesting"]) {
+    description = 'Runs End to End Tests with mock data loaded from JSON files'
+    protractorArgs '--params.mock.playback=true'
+}
+
+task generateEndToEndRecordings(type: ProtractorTask) {
+    description = 'Records mock data for End to End Tests from running controller'
+    protractorArgs '--params.mock.record=true'
+}
+
+task recordEndToEnd(type: Copy, dependsOn: [generateEndToEndRecordings]) {
+    from("${endToEndTestOutputDir}/endToEnd") {
+        include '**/*.json'
+        exclude '*.json'
+        exclude 'static'
+    }
+    into 'src/web/test/endToEnd'
+    includeEmptyDirs = false
+}
+
+task zipE2E(type: Zip, dependsOn: [compileEndToEnd, updateProtractorDependencies, copyChromeWebDriver, copyEndToEndConfigs]) {
+    description = 'Produces a self-contained archive, e2e-test.zip, with all E2E tests, i.e. one you can use to execute tests without needing anything else from the CODEBASE'
+
+    from(projectDir) {
+        include 'node_modules/**'
+        include 'build/node/**'
+        include 'build/e2e-test/**'
+    }
+    baseName 'e2e-test'
+    destinationDir file("${buildDir}/artifacts")
+}
+
+artifacts {
+    e2eZip zipE2E
+}
+
+task copyAdqlGrammar(type: Copy, dependsOn: configurations.adqlGrammar) {
+    from { configurations.adqlGrammar.collect { zipTree(it) } }
+    into 'src/web/lib/antlr'
+    include 'ADQL.g4'
+}
+
+def generateTaskName(String baseName, Configuration configuration) {
+    if (configuration.equals(configurations.debug)) {
+        return baseName
+    } else {
+        return configuration.name + baseName.capitalize();
+    }
+}
+
+def flexHome = "${unzipFlexSdk.destinationDir}/flex_sdk_3.6"
+
+/*
+ * The below tasks either have different behavior for release and debug builds, or they are downstream of tasks that
+ * do. Each task is defined in the below loop, once for each visible configuration. They are named based on the
+ * configuration, with the pattern [configuration]TaskName. The configuration label is omitted for the "default"
+ * configuration of debug for backwards compatibility. In this case, the name is simply taskName, following standard
+ * camelCase conventions. An artifact is then defined for each configuration, to allow consumption of either or both.
+ */
+[configurations.release, configurations.debug].each { configuration ->
+
+    def zipTaskName = generateTaskName('zip', configuration)
+
+    def packageTaskName = generateTaskName('package', configuration)
+    def packageWebTaskName = generateTaskName('packageWeb', configuration)
+    def packageAdrumTaskName = generateTaskName('packageAdrum', configuration)
+    def packageFlexTaskName = generateTaskName('packageFlex', configuration)
+
+    def compileFlexTaskName = generateTaskName('compileFlex', configuration)
+    def compileTypeScriptTaskName = generateTaskName('compileTypeScript', configuration)
+    def validateTypeScriptTaskName = generateTaskName('validateTypeScript', configuration)
+
+    def bundleTaskName = generateTaskName('bundleAll', configuration)
+    def bundleMainModuleTaskName = generateTaskName('bundleMain', configuration)
+    def bundleDashboardModuleTaskName = generateTaskName('bundleDashboard', configuration)
+    def bundleAdminModuleTaskName = generateTaskName('bundleAdmin', configuration)
+    def bundleFlowmapModuleTaskName = generateTaskName('bundleFlowmap', configuration)
+
+    def copyLibsTaskName = generateTaskName('copyLibs', configuration)
+    def copyAdrumTaskName = generateTaskName('copyAdrum', configuration)
+    def deployTaskName = generateTaskName('deploy', configuration)
+    def copyAdrumToDeploymentTaskName = generateTaskName('copyAdrumToDeployment', configuration)
+
+    def isReleaseBuild = configuration.equals(configurations.release)
+    def flexDependencyConfiguration = configurations["${configuration.name}FlexDependencies"]
+    def configurationBuildDir = file("${buildDir}-${configuration.name}")
+    def configurationDistDir = file("${configurationBuildDir}/dist")
+
+    task(zipTaskName, type: Zip, dependsOn: packageTaskName) {
+        description = 'Produces a zip archive, ui.zip, containing the contents of the UI build/dist folder'
+
+        from configurationDistDir
+        baseName 'ui'
+        appendix configuration.name
+        destinationDir file("${configurationBuildDir}/artifacts")
+    }
+
+    def packageDeps = [packageWebTaskName]
+    if (enableFlex) {
+        packageDeps += packageFlexTaskName
+    }
+
+    task(packageTaskName, type: Copy, dependsOn: [packageDeps, downloadNexusAssets]) {
+        description = "Finalizes and timestamps the distribution in the ${configurationDistDir} dir"
+
+        doFirst {
+            // Delete older timestamped swfs
+            delete fileTree(dir: configurationDistDir, include: 'Main_*.swf')
+        }
+
+        from('src/web') {
+            include '**/main.jsp'
+            include '**/admin.jsp'
+            include '**/dashboards.jsp'
+            include '**/flowmap.jsp'
+            include '**/_body.jsp'
+            include '**/_head.jsp'
+            include '**/SnapshotExport.jsp'
+            filter(ReplaceTokens, tokens: [BUILD_ID: timestamp, SWFFILENAME: swfName])
+        }
+
+        from("${configurationBuildDir}/flex") {
+            include 'Main.swf'
+            rename('Main.swf', swfName)
+        }
+
+        from '../assets/src'
+        from "${buildDir}/downloads/assets/src"
+
+        into configurationDistDir
+    }
+
+    task(packageFlexTaskName, type: Copy, dependsOn: compileFlexTaskName) {
+        description = "Copies the flex distribution into ${configurationDistDir}"
+
+        // Bring in static components of build
+        from("$flexHome/frameworks/rsls") {
+            include 'framework*.swz'
+        }
+
+        from flexDependencyConfiguration
+        from "${buildDir}/config"
+        from("${configurationBuildDir}/flex")
+
+        into configurationDistDir
+    }
+
+
+    task(compileFlexTaskName, type: JavaExec, dependsOn: ['copyFlexAssets', 'copyConfig', 'unzipFlexSdk']) {
+
+        description = 'Builds all Flex code in view-main'
+        classpath = files("${flexHome}/lib/mxmlc.jar")
+        main = 'flex2.tools.Compiler'
+        inputs.dir('src/flex')
+                .withPathSensitivity(PathSensitivity.RELATIVE)
+                .withPropertyName("inputFiles")
+        inputs.files(flexDependencyConfiguration)
+                .withPathSensitivity(PathSensitivity.RELATIVE)
+                .withPropertyName("sharedSwc")
+        outputs.file("${configurationBuildDir}/flex/Main.swf")
+                .withPropertyName("outputSwf")
+        outputs.cacheIf { true }
+
+        logging.captureStandardOutput LogLevel.INFO
+        jvmArgs '-Dapple.awt.UIElement=true' /* avoid icon in OSX task bar */, '-Xmx2048m', '-Xss2048k'
+        args "+flexlib=${flexHome}/frameworks",
+             "-output=${configurationBuildDir}/flex/Main.swf",
+             '-static-link-runtime-shared-libraries=false',
+             "-locale=${locale}",
+             '-target-player=10.1.0',
+             '-actionscript-file-encoding=UTF-8',
+             "-debug=${!isReleaseBuild}",
+             "-optimize=${isReleaseBuild}",
+             '-compiler.as3=true',
+             '-compiler.allow-source-path-overlap=true',
+             '-compiler.show-actionscript-warnings=false',
+             '-compiler.show-binding-warnings=false',
+             '-compiler.show-deprecation-warnings=false',
+             '-compiler.show-unused-type-selector-warnings=false',
+             '-warnings=false',
+             '-context-root=/controller',
+             '-services=src/web/WEB-INF/flex/services-config.xml',
+             '-source-path=src/flex',
+             "-source-path+=config/locale/${locale}",
+             "-source-path+=${copyConfig.outputs.files.singleFile}",
+             '-library-path+=lib/flex',
+             '-benchmark=true',
+             'src/flex/Main.mxml'
+
+        doFirst {
+            // Since we need to access the file itself, we need a resolved configuration.
+            // We don't want to resolve the configuration at configure time, so we add the argument
+            // just in time before compilation if we're actually executing
+            args += "-library-path+=${flexDependencyConfiguration.singleFile}"
+        }
+    }
+
+    task(packageWebTaskName, type: Copy, dependsOn: [compileTypeScriptTaskName,
+                                                     'compileSass',
+                                                     bundleTaskName,
+                                                     validateTypeScriptTaskName,
+                                                     'concatLibs']) {
+        description = "Copies the HTML5 distribution into ${configurationDistDir}"
+
+        if (isReleaseBuild) {
+            dependsOn packageAdrumTaskName
+        }
+
+        from "${buildDir}/config"
+
+        from('src/web') {
+            include '**/*.html'
+            include 'WEB-INF/**/*.xml'
+            include '**/ext-theme-neptune-all.css'
+            include 'favicon.ico'
+            include 'css/images/**'
+            include 'lib/font-awesome/fonts/**'
+            include 'singularity.js'
+            include 'system.config.js'
+            exclude '**/*.spec.ts'
+
+            if (!isReleaseBuild) {
+                include '**/*.ts'
+            }
+        }
+
+        from("${configurationBuildDir}/web") {
+            include '**/*.js'
+            include '**/*.css'
+            exclude 'lib/adrum/**'  // there is a separate task for packaging adrum
+        }
+
+        from("${buildDir}/web") {
+            include '**/*.js'
+            include '**/*.css'
+            include '**/*.woff'
+            include '**/*.ttf'
+            include '**/*.eot'
+        }
+
+        exclude 'test*/**'
+        exclude 'sandbox*/**'
+        includeEmptyDirs = false
+        into configurationDistDir
+    }
+
+    task(packageAdrumTaskName, type: Copy, dependsOn: copyAdrumTaskName) {
+        description = "Copies adrum into ${configurationDistDir} (by default, this is not run for debug builds)"
+
+        from("${configurationBuildDir}/web") {
+            include 'lib/adrum/**/*.js'
+            include 'lib/adrum/**/adrum-xd.*.html'
+        }
+        into configurationDistDir
+    }
+
+    task(compileTypeScriptTaskName, overwrite: true, type: CompileUiTypeScript, dependsOn: ['compileResourceManager',
+                                                                                            'copyGeneratedTypeScript']) {
+        description = 'Transpiles Typescript code to Javascript'
+
+        tsSource = fileTree(dir: 'src/web', include: '**/*.ts', excludes: ['test', '**/*.spec.ts'])
+        tsConfig = file('tsconfig.gradle.json')
+        outDir = file("${configurationBuildDir}/web")
+        nodeArgs = ['--max-old-space-size=3072']
+    }
+
+    task(validateTypeScriptTaskName, type: JavaExec, dependsOn: [compileTypeScriptTaskName]) {
+        description = 'Runs Code validator on TS files'
+
+        inputs.files(fileTree(dir: 'src/web', include: '**/*.ts'))
+        inputs.files(fileTree(dir: "${configurationBuildDir}/web", include: '**/*.js'))
+
+        // Gradle will always run a task without an output, but we only want to run if inputs have changed
+        outputs.upToDateWhen { return true }
+
+
+        logging.captureStandardOutput LogLevel.INFO
+
+        main 'com.singularity.ee.ui.validator.CodeValidatorRunner'
+        classpath configurations.validator
+
+        args '--enforce-visibility',
+             'true',
+             '--output-dir',
+             "${configurationBuildDir}/web",
+             '--show-warnings',
+             'false'
+    }
+
+    // TODO: split bundle tasks debug/release behavior into distinct tasks
+    task(bundleTaskName, dependsOn: [bundleMainModuleTaskName,
+                                     bundleDashboardModuleTaskName,
+                                     bundleAdminModuleTaskName,
+                                     bundleFlowmapModuleTaskName
+    ]) {
+        description = 'Concatenates and minifies internal modules, or copies them if debug'
+    }
+
+    task(bundleMainModuleTaskName, type: BundleJavaScript, dependsOn: [compileTypeScriptTaskName, copyLibsTaskName]) {
+        jsSource = file("${configurationBuildDir}/web/app/pages/main/MainAppModuleCode.js")
+        release = isReleaseBuild
+        requireRootDir = file("${configurationBuildDir}/web")
+        configFile = file('src/web/system.config.js')
+    }
+
+    task(bundleDashboardModuleTaskName, type: BundleJavaScript, dependsOn: [compileTypeScriptTaskName, copyLibsTaskName]) {
+        jsSource = file("${configurationBuildDir}/web/app/pages/dashboards/DashboardsModuleCode.js")
+        release = isReleaseBuild
+        requireRootDir = file("${configurationBuildDir}/web")
+        configFile = file('src/web/system.config.js')
+    }
+
+    task(bundleAdminModuleTaskName, type: BundleJavaScript, dependsOn: [compileTypeScriptTaskName, copyLibsTaskName]) {
+        jsSource = file("${configurationBuildDir}/web/app/pages/admin/AdminModuleCode.js")
+        release = isReleaseBuild
+        requireRootDir = file("${configurationBuildDir}/web")
+        configFile = file('src/web/system.config.js')
+    }
+
+    task(bundleFlowmapModuleTaskName, type: BundleJavaScript, dependsOn: [compileTypeScriptTaskName, copyLibsTaskName]) {
+        jsSource = file("${configurationBuildDir}/web/app/pages/flowmap/FlowmapModuleCode.js")
+        release = isReleaseBuild
+        requireRootDir = file("${configurationBuildDir}/web")
+        configFile = file('src/web/system.config.js')
+    }
+
+    task(copyAdrumTaskName, type: Copy, dependsOn: configurations.webAdrumDependencies) {
+        def controllerAppDir = project(':controller:controller-app').getProjectDir()
+        inputs.file("${controllerAppDir}/custom.properties")
+        inputs.file("${controllerAppDir}/default.properties")
+
+        from {
+            rename(/adrum-template.js/, 'adrum.js')
+            configurations.webAdrumDependencies.collect { zipTree(it) }
+        }
+
+        into("${configurationBuildDir}/web/lib/adrum")
+
+        doLast {
+            if (!isReleaseBuild) {
+                def adrumTokenReplacements = [beaconUrlHttp : 'http://col.eum-appdynamics.com',
+                                              beaconUrlHttps: 'https://col.eum-appdynamics.com']
+
+                // For dev builds, we're going to look for local properties to overwrite our regular prod values
+                def propertyFilesToLoad = [file("${controllerAppDir}/default.properties"),
+                                           file("${controllerAppDir}/custom.properties")]
+
+                propertyFilesToLoad.each { propertyFile ->
+                    if (propertyFile.exists()) {
+                        propertyFile.withReader { reader ->
+                            def theseProps = new Properties()
+                            theseProps.load(reader)
+
+                            if ('appdynamics.controller.eum.beacon.hostName' in theseProps) {
+                                adrumTokenReplacements.beaconUrlHttp = "http://${theseProps.getProperty('appdynamics.controller.eum.beacon.hostName')}".toString()
+                                adrumTokenReplacements.beaconUrlHttps = "https://${theseProps.getProperty('appdynamics.controller.eum.beacon.hostName')}".toString()
+                            }
+                        }
+                    }
+                }
+
+                def adrumConfiguration = """;(function(config){
+    config.beaconUrlHttp = '${adrumTokenReplacements.beaconUrlHttp}';
+    config.beaconUrlHttps = '${adrumTokenReplacements.beaconUrlHttps}';
+    config.adrumExtUrlHttp = 'lib/adrum';
+    config.adrumExtUrlHttps = 'lib/adrum';
+})(window['adrum-config'] || (window['adrum-config'] = {}));;
+""";
+
+                File adrum = file("${configurationBuildDir}/web/lib/adrum/adrum.js")
+                adrum.text = adrumConfiguration + adrum.getText()
+            }
+
+        }
+    }
+
+    task(copyLibsTaskName, type: Copy, dependsOn: [downloadNexusJsLibs, copyAdqlGrammar, UiModulePlugin.NPM_INSTALL_PRODUCTION_DEPENDENCIES_TASK_NAME]) {
+        // JS libraries may be required dynamically at run time, so we need to bring them over
+        // Even though these libraries don't change per config, they need to be side by side
+        // with the compiled code to keep ref paths correct for testing/optimizing
+        from('src/web') {
+            include 'lib/**'
+            exclude 'lib/controller'
+        }
+        from("${buildDir}/downloads") {
+            include 'lib/**'
+        }
+
+        from(node.nodeModulesDir) {
+            include 'node_modules/**'
+            exclude 'node_modules/@types'
+        }
+        into("${configurationBuildDir}/web")
+    }
+
+    task(deployTaskName, type: Copy, dependsOn: packageTaskName) {
+        description = 'Deploy all UI files to glassfish'
+
+        from configurationDistDir
+        into deployDir
+    }
+
+    task(copyAdrumToDeploymentTaskName, type: Copy, dependsOn: packageAdrumTaskName) {
+        description = 'Only add the adrum files to glassfish.  Use this to add adrum for debug builds.' +
+                ' (by default, adrum is excluded in the debug build)'
+
+        from(configurationDistDir) {
+            include 'lib/adrum/**'
+        }
+        into deployDir
+    }
+
+    artifacts.add(configuration.name, tasks[zipTaskName])
+}
+
+tasks.each { task ->
+    task.group = 'UI'
+}
+
+clean {
+    delete 'build-debug'
+    delete 'build-release'
+    delete copyGeneratedTypeScript.outputs.files
+    delete unpackGeneratedTypeScript.outputs.files
+    delete compileResourceManager.outputs.files
+    delete 'src/flex/images'
+    delete 'src/flex/fonts'
+    delete 'src/flex/swf'
+    delete 'node_modules'
+}
+
+class ProtractorTask extends NodeTask {
+
+    void protractorArgs(String... protractorArgs) {
+        args.addAll(protractorArgs)
+    }
+
+    void protractorArgs(Iterable<String> protractorArgs) {
+        args.addAll(protractorArgs)
+    }
+
+    void setProtractorArgs(Iterable<String> protractorArgs) {
+        args = this.baseArgs + protractorArgs
+    }
+
+    List<String> getBaseArgs() {
+        List<String> baseArgs = ["${project.endToEndTestOutputDir}/endToEnd/config/${project.properties['testConfig'] ?: 'Base'}TestConf.js"]
+        if (project.properties['tags']) {
+            baseArgs.add("--params.tags=${project.properties['tags']}")
+        }
+        if (project.properties['tests']) {
+            baseArgs.add("--params.tests=${project.properties['tests']}")
+        }
+        if (project.properties['protocol']) {
+            baseArgs.add("--params.protocol=${project.properties['protocol']}")
+        }
+        if (project.properties['controllerHost']) {
+            baseArgs.add("--params.controllerHost=${project.properties['controllerHost']}")
+        }
+        if (project.properties['controllerPort']) {
+            baseArgs.add("--params.controllerPort=${project.properties['controllerPort']}")
+        }
+        if (project.properties['username']) {
+            baseArgs.add("--params.controller.username=${project.properties['username']}")
+        }
+        if (project.properties['password']) {
+            baseArgs.add("--params.controller.password=${project.properties['password']}")
+        }
+        if (project.properties['accountName']) {
+            baseArgs.add("--params.controller.accountName=${project.properties['accountName']}")
+        }
+        if (project.properties['adminPassword']) {
+            baseArgs.add("--params.admin.password=${project.properties['adminPassword']}")
+        }
+        return baseArgs
+    }
+
+
+    public ProtractorTask() {
+        setScript(project.file("${project.node.nodeModulesDir}/node_modules/.bin/protractor"))
+        args = this.baseArgs
+        dependsOn(UiModulePlugin.NPM_INSTALL_TEST_DEPENDENCIES_TASK_NAME,
+                  'compileEndToEnd',
+                  'copyEndToEndConfigs',
+                  'copyChromeWebDriver')
+    }
+}
+//TODO: move into plugin
+class BundleJavaScript extends NodeTask {
+
+    @InputFile
+    File jsSource
+
+    @Input
+    @Optional
+    Boolean release = true
+
+    @OutputFile
+    File getOutputFile() {
+        return project.file(jsSource.absolutePath.replaceAll(/\.js$/, '.min.js'));
+    }
+
+    @Input
+    File requireRootDir
+
+    @InputFile
+    File configFile
+
+    File getBuilderScript() {
+        return project.file("${project.tasks.downloadSystemJsBuilder.destinationDir}/node_modules/systemjs-builder/lib/builder.js");
+    }
+    /**
+     * We don't know what files are being used by the builder until it actually traverses the dependency tree.
+     * Consequently, we have to assume if any js files have changed, we need to rebundle.
+     */
+    @InputFiles
+    FileCollection getJsFiles() {
+        return project.fileTree(dir: requireRootDir,
+                                include: '**/*.js',
+                                excludes: ['**/*.min.js', '**/test/**'])
+    }
+
+
+    public BundleJavaScript() {
+        logging.captureStandardOutput LogLevel.INFO
+        dependsOn project.tasks.downloadSystemJsBuilder
+        setScript(project.file("scripts/concatenateForRelease.js"))
+    }
+
+    @Override
+    void exec() {
+        if (release) {
+            setArgs([builderScript, requireRootDir, jsSource, configFile])
+            super.exec()
+        } else {
+            // Debug just copy the input to output
+            project.copy {
+                from jsSource
+                into getOutputFile().parentFile
+                rename jsSource.name, getOutputFile().name
+            }
+        }
+    }
+}
+
+sonarqube {
+    properties {
+        property "sonar.projectName", "UI TypeScript"
+        property "sonar.projectKey", "ui-typescript"
+        property "sonar.projectVersion", "1.0"
+
+        property "sonar.verbose", "true"
+        property "sonar.log.level", "TRACE"
+        property "sonar.language", "ts"
+        property "sonar.sourceEncoding", "UTF-8"
+        property "sonar.sources", "src/web/app,\
+            src/web/shared"
+        property "sonar.tests", "src/web/test/unit"
+        property "sonar.typescript.lcov.reportPaths", "build/typescript-coverage-for-sonar.lcov"
+        property "sonar.showProfiling", "true"
+    }
+}
+
+tasks['sonarqube'].dependsOn 'generateRelativePathTypescriptCoverageReport'
